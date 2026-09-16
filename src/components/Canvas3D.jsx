@@ -235,15 +235,13 @@ export default function Canvas3D({
         setBuildingScreenPositions(screenCoords);
       }
 
-      // Update direct distance midpoint screen coordinates
-      if (directDistancePair && directDistancePair.buildingA && directDistancePair.buildingB && !isFPMode) {
-        const bA = directDistancePair.buildingA;
-        const bB = directDistancePair.buildingB;
-        const mid3D = new THREE.Vector3(
-          (bA.position[0] + bB.position[0]) / 2,
-          ((bA.dimensions[1] + bB.dimensions[1]) / 2) + 4,
-          (bA.position[2] + bB.position[2]) / 2
-        );
+      // Update walkway distance midpoint screen coordinates along the path
+      if (directDistancePair && directDistancePair.walkRoute && directDistancePair.walkRoute.points?.length > 0 && !isFPMode) {
+        const points = directDistancePair.walkRoute.points;
+        const midIdx = Math.floor(points.length / 2);
+        const midPoint = points[midIdx];
+
+        const mid3D = new THREE.Vector3(midPoint[0], 3.5, midPoint[2]);
         mid3D.project(camera);
 
         if (mid3D.z < 1) {
@@ -252,8 +250,11 @@ export default function Canvas3D({
           setMidpointScreenPos({
             x: (mid3D.x * 0.5 + 0.5) * w,
             y: (-(mid3D.y * 0.5) + 0.5) * h,
-            aerialMeters: directDistancePair.aerialMeters,
-            walkMeters: directDistancePair.walkMeters
+            walkMeters: directDistancePair.walkMeters,
+            walkMinutes: directDistancePair.walkMinutes,
+            stepsCount: directDistancePair.stepsCount,
+            buildingA: directDistancePair.buildingA,
+            buildingB: directDistancePair.buildingB
           });
         } else {
           setMidpointScreenPos(null);
@@ -435,7 +436,7 @@ export default function Canvas3D({
     }
   }, [measurePoints]);
 
-  // Handle Direct Laser Beam for Inter-Block Distance
+  // Handle Walkway Pathway Ribbon for Inter-Block Distance
   useEffect(() => {
     if (!sceneRef.current) return;
     const scene = sceneRef.current;
@@ -445,49 +446,71 @@ export default function Canvas3D({
       directLaserMeshRef.current = null;
     }
 
-    if (directDistancePair && directDistancePair.buildingA && directDistancePair.buildingB) {
+    if (directDistancePair && directDistancePair.walkRoute && directDistancePair.walkRoute.points?.length > 1) {
+      const points = directDistancePair.walkRoute.points;
       const bA = directDistancePair.buildingA;
       const bB = directDistancePair.buildingB;
 
-      const pA = new THREE.Vector3(bA.position[0], bA.dimensions[1] + 1, bA.position[2]);
-      const pB = new THREE.Vector3(bB.position[0], bB.dimensions[1] + 1, bB.position[2]);
+      const pathGroup = new THREE.Group();
 
-      const laserGroup = new THREE.Group();
+      // Glowing Ground Path Ribbon along walkways
+      const curvePoints = points.map(p => new THREE.Vector3(p[0], 0.45, p[2]));
+      const curve = new THREE.CatmullRomCurve3(curvePoints);
+      curve.curveType = 'catmullrom';
+      curve.tension = 0.2;
 
-      // Direct connecting laser tube
-      const pathCurve = new THREE.LineCurve3(pA, pB);
-      const tubeGeo = new THREE.TubeGeometry(pathCurve, 20, 0.4, 8, false);
+      const tubeGeo = new THREE.TubeGeometry(curve, 64, 0.55, 8, false);
       const tubeMat = new THREE.MeshBasicMaterial({
-        color: 0xf59e0b,
+        color: 0x38bdf8,
         transparent: true,
         opacity: 0.95
       });
       const tubeMesh = new THREE.Mesh(tubeGeo, tubeMat);
-      laserGroup.add(tubeMesh);
+      pathGroup.add(tubeMesh);
 
-      // Endpoint glowing beacon spheres
-      const beaconGeo = new THREE.SphereGeometry(1.2, 16, 16);
-      const beaconMatA = new THREE.MeshBasicMaterial({ color: 0x38bdf8 });
-      const beaconMatB = new THREE.MeshBasicMaterial({ color: 0xf43f5e });
+      // Waypoint rings at each corner / turn of the campus walkway
+      points.forEach((p, idx) => {
+        const isStart = idx === 0;
+        const isEnd = idx === points.length - 1;
 
-      const beaconA = new THREE.Mesh(beaconGeo, beaconMatA);
-      beaconA.position.copy(pA);
-      laserGroup.add(beaconA);
+        const ringGeo = new THREE.RingGeometry(0.8, isStart || isEnd ? 1.8 : 1.2, 16);
+        const ringMat = new THREE.MeshBasicMaterial({
+          color: isStart ? 0x22c55e : (isEnd ? 0xf43f5e : 0x38bdf8),
+          side: THREE.DoubleSide
+        });
+        const ring = new THREE.Mesh(ringGeo, ringMat);
+        ring.rotation.x = -Math.PI / 2;
+        ring.position.set(p[0], 0.5, p[2]);
+        pathGroup.add(ring);
+      });
 
-      const beaconB = new THREE.Mesh(beaconGeo, beaconMatB);
-      beaconB.position.copy(pB);
-      laserGroup.add(beaconB);
+      scene.add(pathGroup);
+      directLaserMeshRef.current = pathGroup;
 
-      scene.add(laserGroup);
-      directLaserMeshRef.current = laserGroup;
-
-      // Adjust camera to frame both blocks
+      // Adjust camera to view the full walkway path
       if (!isTouring && !isFPMode) {
-        const midX = (pA.x + pB.x) / 2;
-        const midZ = (pA.z + pB.z) / 2;
-        const dist = pA.distanceTo(pB);
-        cameraDesiredTargetRef.current.set(midX, 6, midZ);
-        cameraDesiredPosRef.current.set(midX, Math.max(50, dist * 0.9 + 30), midZ + Math.max(45, dist * 0.8 + 25));
+        let minX = Infinity, maxX = -Infinity;
+        let minZ = Infinity, maxZ = -Infinity;
+
+        points.forEach(p => {
+          if (p[0] < minX) minX = p[0];
+          if (p[0] > maxX) maxX = p[0];
+          if (p[2] < minZ) minZ = p[2];
+          if (p[2] > maxZ) maxZ = p[2];
+        });
+
+        const centerX = (minX + maxX) / 2;
+        const centerZ = (minZ + maxZ) / 2;
+        const spanX = Math.abs(maxX - minX);
+        const spanZ = Math.abs(maxZ - minZ);
+        const maxSpan = Math.max(spanX, spanZ, 40);
+
+        cameraDesiredTargetRef.current.set(centerX, 0, centerZ);
+        cameraDesiredPosRef.current.set(
+          centerX,
+          Math.max(45, maxSpan * 0.9 + 25),
+          centerZ + Math.max(40, maxSpan * 0.8 + 20)
+        );
       }
     }
   }, [directDistancePair, isTouring, isFPMode]);
@@ -708,15 +731,15 @@ export default function Canvas3D({
           }}
           className="absolute pointer-events-none z-30 animate-bounce-slow"
         >
-          <div className="glass-panel px-3.5 py-2 rounded-2xl shadow-2xl border-2 border-amber-400/80 bg-slate-950/90 text-center ring-4 ring-amber-500/20">
-            <div className="text-[10px] font-black uppercase tracking-wider text-amber-400 flex items-center justify-center gap-1">
-              <span>Direct Laser Distance</span>
+          <div className="glass-panel px-4 py-2.5 rounded-2xl shadow-2xl border-2 border-sky-400 bg-slate-950/95 text-center ring-4 ring-sky-500/25">
+            <div className="text-[10px] font-black uppercase tracking-wider text-sky-400 flex items-center justify-center gap-1">
+              <span>Campus Pathway Distance</span>
             </div>
-            <div className="text-base font-black text-white leading-tight">
-              {midpointScreenPos.aerialMeters} <span className="text-xs text-amber-300 font-bold">m</span>
+            <div className="text-xl font-black text-white leading-tight mt-0.5">
+              {midpointScreenPos.walkMeters} <span className="text-sm text-sky-300 font-bold">meters</span>
             </div>
-            <div className="text-[10px] text-slate-300 font-semibold mt-0.5">
-              Walkway: <span className="text-sky-300 font-bold">{midpointScreenPos.walkMeters}m</span>
+            <div className="text-[11px] text-amber-300 font-bold mt-0.5">
+              ~{midpointScreenPos.walkMinutes} min walk <span className="text-slate-400 font-normal">• ~{midpointScreenPos.stepsCount} steps</span>
             </div>
           </div>
         </div>

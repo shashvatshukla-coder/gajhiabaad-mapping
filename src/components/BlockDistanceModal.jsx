@@ -5,14 +5,13 @@ import {
   Ruler,
   Footprints,
   Compass,
-  Plane,
   Building,
   Layers,
   ChevronRight,
-  TrendingDown,
   Navigation,
   Eye,
-  SlidersHorizontal
+  MapPin,
+  Route
 } from 'lucide-react';
 import { BUILDINGS_DATA } from '../data/campusData';
 import { calculateInterBlockDistance, getDistanceMatrixFrom } from '../utils/pathfinding';
@@ -63,17 +62,17 @@ export default function BlockDistanceModal({
         {/* Header */}
         <div className="flex items-center justify-between pb-3 border-b border-slate-800">
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-2xl bg-gradient-to-br from-amber-400 to-orange-600 text-slate-950 font-black flex items-center justify-center shadow-lg shadow-amber-500/20">
-              <Ruler className="w-5 h-5 text-slate-950" />
+            <div className="w-10 h-10 rounded-2xl bg-gradient-to-br from-sky-400 via-blue-600 to-indigo-700 text-white font-black flex items-center justify-center shadow-lg shadow-sky-500/20">
+              <Route className="w-5 h-5 text-white" />
             </div>
             <div>
               <h2 className="text-base sm:text-lg font-bold text-white flex items-center gap-2">
-                Inter-Block Distance Calculator
-                <span className="text-[10px] px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-300 font-bold border border-amber-500/30 uppercase tracking-wider">
-                  Precise 3D Metric
+                Inter-Block Pathway Distance
+                <span className="text-[10px] px-2 py-0.5 rounded-full bg-sky-500/20 text-sky-300 font-bold border border-sky-500/30 uppercase tracking-wider">
+                  Campus Walkways
                 </span>
               </h2>
-              <p className="text-xs text-slate-400">Calculate exact walkway & aerial distances between any campus blocks</p>
+              <p className="text-xs text-slate-400">Exact distance measured through campus roads, promenades & pedestrian paths</p>
             </div>
           </div>
           <button
@@ -87,7 +86,7 @@ export default function BlockDistanceModal({
           </button>
         </div>
 
-        {/* Tab Switcher: Direct Compare vs Proximity Matrix */}
+        {/* Tab Switcher */}
         <div className="flex items-center gap-2 p-1 bg-slate-900/60 rounded-2xl border border-white/5">
           <button
             onClick={() => {
@@ -101,7 +100,7 @@ export default function BlockDistanceModal({
             }`}
           >
             <ArrowRightLeft className="w-3.5 h-3.5" />
-            <span>Block vs Block Comparison</span>
+            <span>Pathway Route Distance</span>
           </button>
           <button
             onClick={() => {
@@ -115,16 +114,16 @@ export default function BlockDistanceModal({
             }`}
           >
             <Layers className="w-3.5 h-3.5" />
-            <span>All Blocks Proximity Matrix</span>
+            <span>All Blocks Distance Table</span>
           </button>
         </div>
 
-        {/* Block A & Block B Selection Bar */}
+        {/* Block 1 & Block 2 Selection Bar */}
         <div className="grid grid-cols-1 sm:grid-cols-5 gap-2.5 items-center bg-slate-900/40 p-3 rounded-2xl border border-white/5">
           {/* Origin Block Selector */}
           <div className="sm:col-span-2 space-y-1">
             <label className="text-[10px] font-bold text-sky-400 uppercase tracking-wider block">
-              Block 1 (Origin)
+              Block 1 (Start)
             </label>
             <select
               value={blockAId || ''}
@@ -147,7 +146,7 @@ export default function BlockDistanceModal({
             <button
               onClick={handleSwap}
               title="Swap Blocks"
-              className="w-9 h-9 rounded-2xl glass-button flex items-center justify-center text-amber-400 hover:scale-110 shadow-lg"
+              className="w-9 h-9 rounded-2xl glass-button flex items-center justify-center text-sky-400 hover:scale-110 shadow-lg"
             >
               <ArrowRightLeft className="w-4 h-4" />
             </button>
@@ -175,69 +174,80 @@ export default function BlockDistanceModal({
           </div>
         </div>
 
-        {/* Tab 1: Direct Block-to-Block Comparison */}
+        {/* Tab 1: Direct Block-to-Block Walkway Pathway Distance */}
         {activeTab === 'compare' && distanceInfo && (
           <div className="space-y-4">
-            {/* Primary Metrics Grid */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              {/* Walkway Path Distance Card */}
-              <div className="p-4 rounded-2xl bg-gradient-to-br from-sky-950/60 to-slate-900/80 border border-sky-500/30 space-y-2 relative overflow-hidden">
-                <div className="flex items-center justify-between">
-                  <span className="text-[10px] font-extrabold uppercase tracking-wider text-sky-400 flex items-center gap-1.5">
-                    <Footprints className="w-3.5 h-3.5" />
-                    Campus Walkway Path
-                  </span>
-                  <span className="text-[10px] px-2 py-0.5 rounded-full bg-sky-500/20 text-sky-300 font-bold">
-                    Paved Roads
-                  </span>
-                </div>
-                <div className="flex items-baseline gap-2">
-                  <span className="text-3xl font-black text-white">{distanceInfo.walkMeters}</span>
-                  <span className="text-sm font-bold text-sky-300">meters</span>
-                  <span className="text-xs text-slate-400">({distanceInfo.walkFeet} ft)</span>
-                </div>
-                <div className="grid grid-cols-2 gap-2 pt-2 border-t border-slate-800/80 text-xs">
-                  <div>
-                    <span className="text-slate-400 text-[11px] block">Est. Walking Time</span>
-                    <span className="font-bold text-amber-300">~{distanceInfo.walkMinutes} min walk</span>
-                  </div>
-                  <div>
-                    <span className="text-slate-400 text-[11px] block">Estimated Steps</span>
-                    <span className="font-bold text-slate-200">~{distanceInfo.stepsCount} steps</span>
-                  </div>
-                </div>
+            {/* Primary Hero Distance Card */}
+            <div className="p-5 rounded-3xl bg-gradient-to-br from-sky-950/80 via-slate-900/90 to-blue-950/60 border border-sky-500/30 space-y-3 relative overflow-hidden shadow-xl">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-extrabold uppercase tracking-wider text-sky-400 flex items-center gap-2">
+                  <Footprints className="w-4 h-4 text-sky-400" />
+                  Distance Through Campus Walkways
+                </span>
+                <span className="text-[11px] px-2.5 py-0.5 rounded-full bg-sky-500/20 text-sky-300 font-bold border border-sky-500/30">
+                  Via Pedestrian Paths
+                </span>
               </div>
 
-              {/* Direct Aerial / Line of Sight Distance Card */}
-              <div className="p-4 rounded-2xl bg-gradient-to-br from-amber-950/40 to-slate-900/80 border border-amber-500/30 space-y-2 relative overflow-hidden">
-                <div className="flex items-center justify-between">
-                  <span className="text-[10px] font-extrabold uppercase tracking-wider text-amber-400 flex items-center gap-1.5">
-                    <Plane className="w-3.5 h-3.5" />
-                    Direct Line of Sight
-                  </span>
-                  <span className="text-[10px] px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-300 font-bold">
-                    Straight 3D Vector
-                  </span>
+              <div className="flex items-baseline gap-2.5">
+                <span className="text-4xl sm:text-5xl font-black text-white tracking-tight">
+                  {distanceInfo.walkMeters}
+                </span>
+                <span className="text-lg font-bold text-sky-300">meters</span>
+                <span className="text-sm text-slate-400">({distanceInfo.walkFeet} ft)</span>
+              </div>
+
+              {/* 3-Column Metrics Grid */}
+              <div className="grid grid-cols-3 gap-2 pt-3 border-t border-slate-800/80 text-xs">
+                <div className="bg-slate-900/60 p-2.5 rounded-xl border border-white/5 text-center">
+                  <span className="text-slate-400 text-[10px] uppercase font-bold block">Walking Time</span>
+                  <span className="font-extrabold text-amber-300 text-sm mt-0.5">~{distanceInfo.walkMinutes} min</span>
                 </div>
-                <div className="flex items-baseline gap-2">
-                  <span className="text-3xl font-black text-white">{distanceInfo.aerialMeters}</span>
-                  <span className="text-sm font-bold text-amber-300">meters</span>
-                  <span className="text-xs text-slate-400">({distanceInfo.aerialFeet} ft)</span>
+                <div className="bg-slate-900/60 p-2.5 rounded-xl border border-white/5 text-center">
+                  <span className="text-slate-400 text-[10px] uppercase font-bold block">Approx. Steps</span>
+                  <span className="font-extrabold text-emerald-300 text-sm mt-0.5">~{distanceInfo.stepsCount} steps</span>
                 </div>
-                <div className="grid grid-cols-2 gap-2 pt-2 border-t border-slate-800/80 text-xs">
-                  <div>
-                    <span className="text-slate-400 text-[11px] block">Drone Flight (15m/s)</span>
-                    <span className="font-bold text-sky-300">~{distanceInfo.droneFlightSeconds} seconds</span>
-                  </div>
-                  <div>
-                    <span className="text-slate-400 text-[11px] block">Walk vs Aerial</span>
-                    <span className="font-bold text-emerald-400">
-                      +{Math.max(0, distanceInfo.walkMeters - distanceInfo.aerialMeters)}m path
-                    </span>
-                  </div>
+                <div className="bg-slate-900/60 p-2.5 rounded-xl border border-white/5 text-center">
+                  <span className="text-slate-400 text-[10px] uppercase font-bold block">Route Path</span>
+                  <span className="font-extrabold text-sky-300 text-sm mt-0.5">
+                    {distanceInfo.walkRoute ? `${distanceInfo.walkRoute.points.length} waypoints` : 'Connected'}
+                  </span>
                 </div>
               </div>
             </div>
+
+            {/* Path Route Segments & Waypoints */}
+            {distanceInfo.walkRoute && distanceInfo.walkRoute.steps && (
+              <div className="space-y-1.5">
+                <div className="text-[11px] font-bold text-slate-300 flex items-center justify-between">
+                  <span className="flex items-center gap-1.5 text-sky-400">
+                    <Compass className="w-3.5 h-3.5" />
+                    Walkway Route Breakdown ({distanceInfo.walkRoute.steps.length} Path Segments)
+                  </span>
+                  <span className="text-[10px] text-slate-400">Follows physical campus roads</span>
+                </div>
+                <div className="max-h-36 overflow-y-auto space-y-1 pr-1">
+                  {distanceInfo.walkRoute.steps.map((step, idx) => (
+                    <div
+                      key={idx}
+                      className="flex items-center justify-between p-2 rounded-xl bg-slate-900/50 border border-white/5 text-xs text-slate-300"
+                    >
+                      <div className="flex items-center gap-2">
+                        <span className="w-5 h-5 rounded-full bg-slate-800 text-sky-400 font-bold text-[10px] flex items-center justify-center shrink-0">
+                          {idx + 1}
+                        </span>
+                        <span>{step.instruction}</span>
+                      </div>
+                      {step.distance > 0 && (
+                        <span className="text-[10px] font-bold text-sky-400 bg-sky-500/10 px-2 py-0.5 rounded-md shrink-0">
+                          +{step.distance}m
+                        </span>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
 
             {/* Quick Action Buttons */}
             <div className="grid grid-cols-2 gap-2.5">
@@ -250,7 +260,7 @@ export default function BlockDistanceModal({
                 className="py-3 px-4 rounded-2xl text-xs font-bold glass-button text-sky-300 border-sky-500/40 hover:border-sky-300 flex items-center justify-center gap-2 shadow-lg"
               >
                 <Eye className="w-4 h-4 text-sky-400" />
-                <span>View Direct Distance in 3D</span>
+                <span>Show Walkway Path in 3D</span>
               </button>
 
               <button
@@ -262,17 +272,17 @@ export default function BlockDistanceModal({
                 className="py-3 px-4 rounded-2xl text-xs font-bold bg-gradient-to-r from-sky-500 to-blue-600 hover:from-sky-400 hover:to-blue-500 text-white flex items-center justify-center gap-2 shadow-lg shadow-sky-500/25 border border-sky-400"
               >
                 <Navigation className="w-4 h-4" />
-                <span>Navigate Walking Route</span>
+                <span>Start Walk Navigation</span>
               </button>
             </div>
           </div>
         )}
 
-        {/* Tab 2: Proximity Matrix (Distances to All Campus Blocks) */}
+        {/* Tab 2: Proximity Matrix (Distances to All Campus Blocks via Walkways) */}
         {activeTab === 'matrix' && (
           <div className="space-y-2">
             <div className="text-xs font-bold text-slate-300 flex items-center justify-between pb-1">
-              <span>Distances from {distanceInfo?.buildingA?.shortName || 'Selected Block'} to all buildings</span>
+              <span>Walkway distances from {distanceInfo?.buildingA?.shortName || 'Selected Block'} to all locations</span>
               <span className="text-[10px] text-slate-400">{proximityList.length} destinations</span>
             </div>
 
@@ -303,7 +313,7 @@ export default function BlockDistanceModal({
                     <button
                       onClick={() => handleSelectFromMatrix(item.building.id)}
                       className="p-1.5 rounded-lg glass-button text-slate-300 hover:text-white"
-                      title="Compare with this block"
+                      title="Calculate pathway to this block"
                     >
                       <ChevronRight className="w-4 h-4 text-sky-400" />
                     </button>

@@ -86,7 +86,23 @@ An interactive 3D Web application for **KIET Group of Institutions (KIET Deemed 
 
 ---
 
-### 9. 🗺️ Real-Time 2D Radar Mini-Map
+### 9. 📊 Campus Area Occupied, Sorted Area Ranking & 3D Land-Use Heatmap
+- **Total Campus Land Mapping (21.56 Acres / 87,250 m²)**:
+  - Total Ground Footprint Coverage: **33,450 m² (38.3%)**
+  - Gross Multi-Storey Floor Space: **~174,000 m² (1.87M sq ft)**
+  - Open Greenery, Sports & Lawns: **34,950 m² (40.1%)**
+  - Roads, Promenades & Infrastructure: **9,750 m² (11.2%)**
+- **Sorted Area Ranking Table**:
+  - Sorts all campus blocks by **Ground Footprint Area (m²)**, **Gross Floor Area (m²)**, **Volume (m³)**, **Campus Land Share (%)**, or **Floor Count**.
+  - Interactive "Locate in 3D" triggers to highlight and zoom camera over ranked blocks.
+- **3D Land-Use Heatmap & Zone Boundaries**:
+  - Color-coded glowing ground footprint pads under every building.
+  - Interactive land-use zones (Academic & Research, Hostels, Sports Complex, Events & Dining, Green Belts, Infrastructure).
+  - On-screen 3D area metric badges showing exact square meters ($m^2$) for each block.
+
+---
+
+### 10. 🗺️ Real-Time 2D Radar Mini-Map
 - Top-down live mini-map with real-time campus footprint, route tracking, and instant click-to-focus.
 
 ---

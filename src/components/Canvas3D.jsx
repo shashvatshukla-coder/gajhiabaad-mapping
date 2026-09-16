@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState, useCallback } from 'react';
 import * as THREE from 'three';
-import { BUILDINGS_DATA, CAMPUS_STATS } from '../data/campusData';
+import { BUILDINGS_DATA, CAMPUS_STATS, getBuildingAreaMetrics, CAMPUS_ZONES } from '../data/campusData';
 import {
   createBuildingGroup,
   createMainGate,
@@ -26,7 +26,10 @@ export default function Canvas3D({
   isFPMode,
   fpMoveVector,
   onScreenLabels = true,
-  directDistancePair = null // { buildingA, buildingB, aerialMeters, walkMeters }
+  directDistancePair = null, // { buildingA, buildingB, aerialMeters, walkMeters }
+  isAreaHeatmapActive = false,
+  highlightedAreaBuilding = null,
+  highlightedZone = null
 }) {
   const mountRef = useRef(null);
   const sceneRef = useRef(null);
@@ -36,6 +39,7 @@ export default function Canvas3D({
   const animationFrameRef = useRef(null);
   const routeMeshRef = useRef(null);
   const directLaserMeshRef = useRef(null);
+  const heatmapMeshGroupRef = useRef(null);
   const fountainParticlesRef = useRef(null);
   const rainParticlesRef = useRef(null);
   const measureLineRef = useRef(null);
@@ -221,6 +225,7 @@ export default function Canvas3D({
           if (pos3D.z < 1) {
             const x = (pos3D.x * 0.5 + 0.5) * w;
             const y = (-(pos3D.y * 0.5) + 0.5) * h;
+            const metrics = getBuildingAreaMetrics(b);
             screenCoords.push({
               id: b.id,
               code: b.code,
@@ -228,7 +233,10 @@ export default function Canvas3D({
               tag: b.tag,
               color: b.color,
               x,
-              y
+              y,
+              footprintM2: metrics.footprintM2,
+              percentOfCampus: metrics.percentOfCampus,
+              grossFloorM2: metrics.grossFloorM2
             });
           }
         });
@@ -515,6 +523,85 @@ export default function Canvas3D({
     }
   }, [directDistancePair, isTouring, isFPMode]);
 
+  // Handle 3D Area Mapping & Land-Use Heatmap Layer
+  useEffect(() => {
+    if (!sceneRef.current) return;
+    const scene = sceneRef.current;
+
+    if (heatmapMeshGroupRef.current) {
+      scene.remove(heatmapMeshGroupRef.current);
+      heatmapMeshGroupRef.current = null;
+    }
+
+    if (isAreaHeatmapActive) {
+      const heatmapGroup = new THREE.Group();
+      heatmapGroup.name = 'area_heatmap_layer';
+
+      // 1. Render color-coded glowing ground pads under every building
+      BUILDINGS_DATA.forEach(b => {
+        const [w, h, d] = b.dimensions;
+        const padGeo = new THREE.PlaneGeometry(w + 2.5, d + 2.5);
+        const padMat = new THREE.MeshBasicMaterial({
+          color: new THREE.Color(b.color),
+          transparent: true,
+          opacity: 0.45,
+          side: THREE.DoubleSide
+        });
+        const pad = new THREE.Mesh(padGeo, padMat);
+        pad.rotation.x = -Math.PI / 2;
+        pad.position.set(b.position[0], 0.1, b.position[2]);
+        heatmapGroup.add(pad);
+
+        // Border outline
+        const borderGeo = new THREE.EdgesGeometry(new THREE.BoxGeometry(w + 2.5, 0.2, d + 2.5));
+        const borderMat = new THREE.LineBasicMaterial({ color: 0xffffff, linewidth: 2 });
+        const border = new THREE.LineSegments(borderGeo, borderMat);
+        border.position.set(b.position[0], 0.15, b.position[2]);
+        heatmapGroup.add(border);
+      });
+
+      // 2. Render Zone Bounding Overlays
+      const zoneBounds = [
+        { id: 'zone-academic', color: 0x3b82f6, bounds: [-55, 55, -58, 20] },
+        { id: 'zone-hostel', color: 0xec4899, bounds: [-95, -60, -65, 55] },
+        { id: 'zone-sports', color: 0x22c55e, bounds: [-80, 45, 45, 85] }
+      ];
+
+      zoneBounds.forEach(z => {
+        const [minX, maxX, minZ, maxZ] = z.bounds;
+        const width = maxX - minX;
+        const depth = maxZ - minZ;
+        const centerX = (minX + maxX) / 2;
+        const centerZ = (minZ + maxZ) / 2;
+
+        const zoneGeo = new THREE.PlaneGeometry(width, depth);
+        const zoneMat = new THREE.MeshBasicMaterial({
+          color: z.color,
+          transparent: true,
+          opacity: 0.18,
+          side: THREE.DoubleSide
+        });
+        const zoneMesh = new THREE.Mesh(zoneGeo, zoneMat);
+        zoneMesh.rotation.x = -Math.PI / 2;
+        zoneMesh.position.set(centerX, 0.08, centerZ);
+        heatmapGroup.add(zoneMesh);
+      });
+
+      scene.add(heatmapGroup);
+      heatmapMeshGroupRef.current = heatmapGroup;
+    }
+  }, [isAreaHeatmapActive]);
+
+  // Handle Camera Frame on Highlighted Area Building
+  useEffect(() => {
+    if (!highlightedAreaBuilding || isTouring || isFPMode) return;
+    const [bx, by, bz] = highlightedAreaBuilding.position;
+    const [w, h, d] = highlightedAreaBuilding.dimensions;
+
+    cameraDesiredTargetRef.current.set(bx, h / 2, bz);
+    cameraDesiredPosRef.current.set(bx + w * 0.8, h + 22, bz + d * 1.6);
+  }, [highlightedAreaBuilding, isTouring, isFPMode]);
+
   // Handle First-Person Movement
   useEffect(() => {
     if (!isFPMode || !fpMoveVector) return;
@@ -709,6 +796,11 @@ export default function Canvas3D({
                 {pos.code}
               </span>
               <span className="whitespace-nowrap">{pos.name}</span>
+              {isAreaHeatmapActive && pos.footprintM2 && (
+                <span className="text-[10px] font-extrabold text-emerald-300 bg-emerald-500/20 px-1.5 py-0.5 rounded ml-1 border border-emerald-500/30">
+                  {pos.footprintM2.toLocaleString()} m²
+                </span>
+              )}
             </div>
           </div>
         );

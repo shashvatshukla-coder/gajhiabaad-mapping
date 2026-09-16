@@ -19,7 +19,8 @@ import {
   ChevronRight,
   Eye,
   EyeOff,
-  ArrowRightLeft
+  ArrowRightLeft,
+  PieChart
 } from 'lucide-react';
 import { CAMPUS_CATEGORIES, BUILDINGS_DATA, CAMPUS_STATS } from '../data/campusData';
 import { soundEngine } from '../utils/audioEffects';
@@ -40,7 +41,8 @@ export default function Header({
   onOpenAbout,
   onScreenLabels,
   setOnScreenLabels,
-  onOpenBlockDistance
+  onOpenBlockDistance,
+  onOpenAreaMapping
 }) {
   const [searchQuery, setSearchQuery] = useState('');
   const [isSearchOpen, setIsSearchOpen] = useState(false);
@@ -183,6 +185,19 @@ export default function Header({
 
         {/* Right: Quick Action Controls */}
         <div className="flex items-center gap-2 pointer-events-auto">
+          {/* Area Mapping & Analytics Trigger */}
+          <button
+            onClick={() => {
+              soundEngine.playClick();
+              onOpenAreaMapping();
+            }}
+            title="Campus Area Mapping & Sorted Land-Use Analytics"
+            className="glass-button px-3 py-2 rounded-2xl text-xs font-bold text-emerald-300 flex items-center gap-1.5 shadow-lg border border-emerald-500/30 hover:border-emerald-400 bg-emerald-500/10"
+          >
+            <PieChart className="w-4 h-4 text-emerald-400" />
+            <span className="hidden md:inline">Area Mapping</span>
+          </button>
+
           {/* Block Distance Calculator Trigger */}
           <button
             onClick={() => {

@@ -11,6 +11,7 @@ import FPControlsHUD from './components/FPControlsHUD';
 import EventsModal from './components/EventsModal';
 import AboutModal from './components/AboutModal';
 import BlockDistanceModal from './components/BlockDistanceModal';
+import AreaMappingModal from './components/AreaMappingModal';
 import { BUILDINGS_DATA, CAMERA_PRESETS } from './data/campusData';
 import { TOUR_STEPS } from './data/tourSteps';
 import { findPath, calculateInterBlockDistance } from './utils/pathfinding';
@@ -48,6 +49,12 @@ export default function App() {
   const [blockDistA, setBlockDistA] = useState('block-a');
   const [blockDistB, setBlockDistB] = useState('block-e');
   const [directDistancePair, setDirectDistancePair] = useState(null);
+
+  // Area Mapping & Spatial Analytics State
+  const [isAreaModalOpen, setIsAreaModalOpen] = useState(false);
+  const [isAreaHeatmapActive, setIsAreaHeatmapActive] = useState(false);
+  const [highlightedAreaBuilding, setHighlightedAreaBuilding] = useState(null);
+  const [highlightedZone, setHighlightedZone] = useState(null);
 
   // First-Person Mode State
   const [isFPMode, setIsFPMode] = useState(false);
@@ -108,7 +115,20 @@ export default function App() {
     setIsExploded(false);
   };
 
-  // Focus two blocks in 3D with direct laser beam
+  // Open Area Mapping Modal
+  const handleOpenAreaMapping = () => {
+    setIsAreaModalOpen(true);
+    setActiveBuilding(null);
+    setIsExploded(false);
+  };
+
+  // Highlight specific building from Area Ranking
+  const handleHighlightAreaBuilding = (building) => {
+    setHighlightedAreaBuilding(building);
+    setActiveBuilding(building);
+  };
+
+  // Focus two blocks in 3D with direct laser beam / ground pathway
   const handleFocusBlocksIn3D = (buildingA, buildingB) => {
     const calc = calculateInterBlockDistance(buildingA.id, buildingB.id);
     if (calc) {
@@ -182,6 +202,7 @@ export default function App() {
     setIsTouring(false);
     setIsFPMode(false);
     setDirectDistancePair(null);
+    setHighlightedAreaBuilding(null);
   };
 
   return (
@@ -203,6 +224,9 @@ export default function App() {
         fpMoveVector={fpMoveVector}
         onScreenLabels={onScreenLabels}
         directDistancePair={directDistancePair}
+        isAreaHeatmapActive={isAreaHeatmapActive}
+        highlightedAreaBuilding={highlightedAreaBuilding}
+        highlightedZone={highlightedZone}
       />
 
       {/* Header Navigation Bar */}
@@ -224,6 +248,7 @@ export default function App() {
           onScreenLabels={onScreenLabels}
           setOnScreenLabels={setOnScreenLabels}
           onOpenBlockDistance={() => handleOpenBlockDistance()}
+          onOpenAreaMapping={handleOpenAreaMapping}
         />
       )}
 
@@ -307,6 +332,16 @@ export default function App() {
         setBlockBId={setBlockDistB}
         onFocusBlocksIn3D={handleFocusBlocksIn3D}
         onNavigateRoute={handleNavigateRouteFromDistance}
+      />
+
+      {/* Campus Area Mapping & Sorted Spatial Analytics Modal */}
+      <AreaMappingModal
+        isOpen={isAreaModalOpen}
+        onClose={() => setIsAreaModalOpen(false)}
+        onHighlightBuildingIn3D={handleHighlightAreaBuilding}
+        isHeatmapActive={isAreaHeatmapActive}
+        setIsHeatmapActive={setIsAreaHeatmapActive}
+        onSelectZone={setHighlightedZone}
       />
 
       {/* Campus Events & Fests Modal */}

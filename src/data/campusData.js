@@ -849,7 +849,10 @@ export const CAMPUS_STATS = {
   subTitle: 'KIET Deemed to be University, Delhi-NCR, Ghaziabad',
   tagline: 'Empowering Minds, Transforming Futures',
   accreditation: 'NAAC A+ Grade | NBA Accredited | NIRF Top Ranked',
-  area: '21.56 Acres',
+  area: '21.56 Acres (87,250 m²)',
+  areaM2: 87250,
+  areaAcres: 21.56,
+  areaSqFt: 939151,
   students: '6,500+ Students',
   faculty: '320+ Faculty Members',
   established: '1998',
@@ -863,3 +866,156 @@ export const CAMPUS_STATS = {
     wardenGirls: '+91 1234 567893'
   }
 };
+
+// Calculate Area & Spatial Metrics for any building / facility
+export function getBuildingAreaMetrics(building) {
+  if (!building) return null;
+  const [w, h, d] = building.dimensions;
+  const floors = building.floorsCount || 1;
+
+  // 1 unit in 3D = 2.5 meters
+  const widthMeters = Math.round(w * 2.5);
+  const depthMeters = Math.round(d * 2.5);
+  const heightMeters = Math.round(h * 2.5);
+
+  // Ground Footprint Area (m²)
+  const footprintM2 = Math.round(widthMeters * depthMeters);
+  const footprintSqFt = Math.round(footprintM2 * 10.7639);
+  const footprintAcres = Number((footprintM2 / 4046.86).toFixed(3));
+
+  // Gross Built-up Floor Area across all storeys (m²)
+  const grossFloorM2 = footprintM2 * floors;
+  const grossFloorSqFt = Math.round(grossFloorM2 * 10.7639);
+
+  // Volume (m³)
+  const volumeM3 = Math.round(widthMeters * depthMeters * heightMeters);
+
+  // Percentage of Total 21.56 Acre Campus Ground Area
+  const percentOfCampus = Number(((footprintM2 / CAMPUS_STATS.areaM2) * 100).toFixed(2));
+
+  return {
+    buildingId: building.id,
+    name: building.name,
+    shortName: building.shortName,
+    code: building.code,
+    category: building.category,
+    color: building.color,
+    floorsCount: floors,
+    widthMeters,
+    depthMeters,
+    heightMeters,
+    footprintM2,
+    footprintSqFt,
+    footprintAcres,
+    grossFloorM2,
+    grossFloorSqFt,
+    volumeM3,
+    percentOfCampus
+  };
+}
+
+// Campus Land-Use Zones Breakdown & Mapping
+export const CAMPUS_ZONES = [
+  {
+    id: 'zone-academic',
+    name: 'Academic & Research Zone',
+    color: '#3b82f6',
+    accentColor: '#1d4ed8',
+    footprintM2: 17850,
+    grossFloorM2: 66400,
+    percentOfCampus: 20.45,
+    description: 'Central academic complex comprising Blocks A through H, KSOP Pharmacy, and TBI Incubator.',
+    buildingIds: ['block-a', 'block-b', 'block-c', 'block-d', 'block-e', 'block-f', 'block-g', 'block-h', 'ksop-block', 'tbi-incubator']
+  },
+  {
+    id: 'zone-hostel',
+    name: 'Student Residential Hostels Zone',
+    color: '#ec4899',
+    accentColor: '#be185d',
+    footprintM2: 15600,
+    grossFloorM2: 60400,
+    percentOfCampus: 17.88,
+    description: 'Six on-campus boys hostels and three girls hostels quadrangle with dedicated dining and recreation.',
+    buildingIds: ['hostel-aryabhatta', 'hostel-cv-raman', 'hostel-tagore-vivekanand', 'hostel-chandragupt-chanakya', 'hostel-gargi-sarojini']
+  },
+  {
+    id: 'zone-sports',
+    name: 'Sports Stadium & Courts Complex',
+    color: '#22c55e',
+    accentColor: '#15803d',
+    footprintM2: 18450,
+    grossFloorM2: 18450,
+    percentOfCampus: 21.15,
+    description: 'Cricket stadium with turf pitch, football arena, synthetic basketball courts, tennis and volleyball arenas.',
+    buildingIds: ['cricket-ground', 'sports-complex-courts']
+  },
+  {
+    id: 'zone-events-food',
+    name: 'Cultural, Auditoriums & Dining Hub',
+    color: '#f97316',
+    accentColor: '#c2410c',
+    footprintM2: 9100,
+    grossFloorM2: 15200,
+    percentOfCampus: 10.43,
+    description: '600+ capacity Central Auditorium, Open Air Theatre (OAT), Central Cafeteria, and Snack Plaza.',
+    buildingIds: ['central-auditorium', 'open-air-theatre', 'central-cafeteria', 'ccd-amul-nescafe']
+  },
+  {
+    id: 'zone-greenery',
+    name: 'Landscaped Lawns, Botanical & Green Belts',
+    color: '#10b981',
+    accentColor: '#047857',
+    footprintM2: 16500,
+    grossFloorM2: 16500,
+    percentOfCampus: 18.91,
+    description: 'Central Fountain lawns, Temple floral gardens, KSOP botanical garden, and peripheral tree plantations.',
+    buildingIds: ['campus-temple']
+  },
+  {
+    id: 'zone-infrastructure',
+    name: 'Roads, Gate Plazas & Utility Infrastructure',
+    color: '#64748b',
+    accentColor: '#334155',
+    footprintM2: 9750,
+    grossFloorM2: 11200,
+    percentOfCampus: 11.18,
+    description: 'NH-58 Highway Gate 1, Gates 2 & 3, paved spine roads, pedestrian promenades, ATM plaza & dispensary.',
+    buildingIds: ['gate-1-main', 'gate-2-hostel', 'gate-3-sports', 'dispensary-medical', 'atm-plaza']
+  }
+];
+
+// Helper to get all buildings sorted by Area metrics (Footprint, Gross Floor Area, Volume, etc.)
+export function getSortedBuildingsByArea(sortBy = 'footprint', categoryFilter = 'all', order = 'desc') {
+  let list = BUILDINGS_DATA.map(b => getBuildingAreaMetrics(b));
+
+  if (categoryFilter !== 'all') {
+    list = list.filter(b => b.category === categoryFilter);
+  }
+
+  list.sort((a, b) => {
+    let valA = 0;
+    let valB = 0;
+    if (sortBy === 'footprint') {
+      valA = a.footprintM2;
+      valB = b.footprintM2;
+    } else if (sortBy === 'grossFloor') {
+      valA = a.grossFloorM2;
+      valB = b.grossFloorM2;
+    } else if (sortBy === 'volume') {
+      valA = a.volumeM3;
+      valB = b.volumeM3;
+    } else if (sortBy === 'percent') {
+      valA = a.percentOfCampus;
+      valB = b.percentOfCampus;
+    } else if (sortBy === 'floors') {
+      valA = a.floorsCount;
+      valB = b.floorsCount;
+    }
+    return order === 'desc' ? valB - valA : valA - valB;
+  });
+
+  return list.map((item, index) => ({
+    ...item,
+    rank: index + 1
+  }));
+}

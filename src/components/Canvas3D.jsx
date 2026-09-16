@@ -1,0 +1,617 @@
+import React, { useEffect, useRef, useState, useCallback } from 'react';
+import * as THREE from 'three';
+import { BUILDINGS_DATA, CAMPUS_STATS } from '../data/campusData';
+import {
+  createBuildingGroup,
+  createMainGate,
+  createFountainPlaza,
+  createCampusTrees,
+  createCampusGround,
+  createStreetLights,
+  createRouteRibbon
+} from '../utils/threeHelpers';
+
+export default function Canvas3D({
+  activeBuilding,
+  setActiveBuilding,
+  isExploded,
+  timeOfDay, // 'day' | 'sunset' | 'night' | 'rain'
+  cameraPreset,
+  tourCurrentStep,
+  isTouring,
+  activeRoute,
+  measureMode,
+  measurePoints,
+  setMeasurePoints,
+  isFPMode,
+  fpMoveVector,
+  onScreenLabels = true
+}) {
+  const mountRef = useRef(null);
+  const sceneRef = useRef(null);
+  const cameraRef = useRef(null);
+  const rendererRef = useRef(null);
+  const buildingGroupsRef = useRef(new Map());
+  const animationFrameRef = useRef(null);
+  const routeMeshRef = useRef(null);
+  const fountainParticlesRef = useRef(null);
+  const rainParticlesRef = useRef(null);
+  const measureLineRef = useRef(null);
+
+  // Camera Target & Animation
+  const cameraTargetRef = useRef(new THREE.Vector3(0, 0, 0));
+  const cameraDesiredPosRef = useRef(new THREE.Vector3(0, 130, 120));
+  const cameraDesiredTargetRef = useRef(new THREE.Vector3(0, 0, 0));
+  const isTransitioningRef = useRef(false);
+
+  // Orbit & Mouse Interaction state
+  const isDraggingRef = useRef(false);
+  const previousMousePosRef = useRef({ x: 0, y: 0 });
+  const hoveredBuildingRef = useRef(null);
+  const [hoveredBuilding, setHoveredBuilding] = useState(null);
+  const [buildingScreenPositions, setBuildingScreenPositions] = useState([]);
+
+  // First-Person Mode state
+  const fpPosRef = useRef(new THREE.Vector3(0, 2.5, -80));
+  const fpYawRef = useRef(0);
+  const fpPitchRef = useRef(0);
+
+  // Initialize Scene
+  useEffect(() => {
+    if (!mountRef.current) return;
+
+    const width = mountRef.current.clientWidth;
+    const height = mountRef.current.clientHeight;
+
+    // 1. Scene
+    const scene = new THREE.Scene();
+    sceneRef.current = scene;
+
+    // 2. Camera
+    const camera = new THREE.PerspectiveCamera(45, width / height, 1, 1000);
+    camera.position.set(0, 130, 120);
+    camera.lookAt(0, 0, 0);
+    cameraRef.current = camera;
+
+    // 3. Renderer
+    const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false, powerPreference: 'high-performance' });
+    renderer.setSize(width, height);
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    renderer.shadowMap.enabled = true;
+    renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+    renderer.toneMapping = THREE.ACESFilmicToneMapping;
+    renderer.toneMappingExposure = 1.0;
+    rendererRef.current = renderer;
+
+    mountRef.current.appendChild(renderer.domElement);
+
+    // 4. Populate Campus Elements
+    const isNight = timeOfDay === 'night';
+
+    // Ground
+    const ground = createCampusGround();
+    scene.add(ground);
+
+    // Main Gate
+    const mainGate = createMainGate();
+    scene.add(mainGate);
+
+    // Fountain Plaza
+    const fountain = createFountainPlaza();
+    scene.add(fountain);
+    fountainParticlesRef.current = fountain.userData.particles;
+
+    // Trees
+    const trees = createCampusTrees(130);
+    scene.add(trees);
+
+    // Street Lights
+    const streetLights = createStreetLights(isNight);
+    streetLights.name = 'streetlights';
+    scene.add(streetLights);
+
+    // Buildings
+    buildingGroupsRef.current.clear();
+    BUILDINGS_DATA.forEach(data => {
+      const bGroup = createBuildingGroup(data, isNight);
+      scene.add(bGroup);
+      buildingGroupsRef.current.set(data.id, bGroup);
+    });
+
+    // Rain Particle System
+    const rainCount = 1500;
+    const rainGeo = new THREE.BufferGeometry();
+    const rainPositions = new Float32Array(rainCount * 3);
+    for (let i = 0; i < rainCount; i++) {
+      rainPositions[i * 3] = (Math.random() - 0.5) * 280;
+      rainPositions[i * 3 + 1] = Math.random() * 80;
+      rainPositions[i * 3 + 2] = (Math.random() - 0.5) * 240;
+    }
+    rainGeo.setAttribute('position', new THREE.BufferAttribute(rainPositions, 3));
+    const rainMat = new THREE.PointsMaterial({
+      color: 0x93c5fd,
+      size: 0.35,
+      transparent: true,
+      opacity: 0.6
+    });
+    const rainMesh = new THREE.Points(rainGeo, rainMat);
+    rainMesh.visible = timeOfDay === 'rain';
+    scene.add(rainMesh);
+    rainParticlesRef.current = rainMesh;
+
+    // Window Resize Handler
+    const handleResize = () => {
+      if (!mountRef.current || !rendererRef.current || !cameraRef.current) return;
+      const w = mountRef.current.clientWidth;
+      const h = mountRef.current.clientHeight;
+      cameraRef.current.aspect = w / h;
+      cameraRef.current.updateProjectionMatrix();
+      rendererRef.current.setSize(w, h);
+    };
+    window.addEventListener('resize', handleResize);
+
+    // Main Render Loop
+    let clock = new THREE.Clock();
+    const animate = () => {
+      animationFrameRef.current = requestAnimationFrame(animate);
+      const delta = clock.getDelta();
+      const time = clock.getElapsedTime();
+
+      // Animate Fountain Particles
+      if (fountainParticlesRef.current) {
+        const positions = fountainParticlesRef.current.geometry.attributes.position.array;
+        const velocities = fountainParticlesRef.current.userData.velocities;
+        for (let i = 0; i < velocities.length; i++) {
+          positions[i * 3] += velocities[i].x;
+          positions[i * 3 + 1] += velocities[i].y;
+          positions[i * 3 + 2] += velocities[i].z;
+
+          // Reset particle if it falls back down
+          if (positions[i * 3 + 1] > 8 || positions[i * 3 + 1] < 1.5) {
+            positions[i * 3] = (Math.random() - 0.5) * 1.5;
+            positions[i * 3 + 1] = 2.5;
+            positions[i * 3 + 2] = (Math.random() - 0.5) * 1.5;
+          }
+        }
+        fountainParticlesRef.current.geometry.attributes.position.needsUpdate = true;
+      }
+
+      // Animate Rain
+      if (rainParticlesRef.current && rainParticlesRef.current.visible) {
+        const pos = rainParticlesRef.current.geometry.attributes.position.array;
+        for (let i = 0; i < rainCount; i++) {
+          pos[i * 3 + 1] -= 2.2;
+          if (pos[i * 3 + 1] < 0) {
+            pos[i * 3 + 1] = 80;
+          }
+        }
+        rainParticlesRef.current.geometry.attributes.position.needsUpdate = true;
+      }
+
+      // Animate Camera Interpolation (Smooth Easing)
+      if (!isFPMode) {
+        camera.position.lerp(cameraDesiredPosRef.current, 0.05);
+        cameraTargetRef.current.lerp(cameraDesiredTargetRef.current, 0.05);
+        camera.lookAt(cameraTargetRef.current);
+      } else {
+        // First-person navigation
+        camera.position.copy(fpPosRef.current);
+        const lookDir = new THREE.Vector3(
+          Math.sin(fpYawRef.current) * Math.cos(fpPitchRef.current),
+          Math.sin(fpPitchRef.current),
+          -Math.cos(fpYawRef.current) * Math.cos(fpPitchRef.current)
+        );
+        camera.lookAt(camera.position.clone().add(lookDir));
+      }
+
+      // Update On-Screen 2D HUD label coordinates
+      if (onScreenLabels && !isFPMode) {
+        const screenCoords = [];
+        const w = mountRef.current?.clientWidth || window.innerWidth;
+        const h = mountRef.current?.clientHeight || window.innerHeight;
+
+        BUILDINGS_DATA.forEach(b => {
+          const pos3D = new THREE.Vector3(b.position[0], b.dimensions[1] + 2.5, b.position[2]);
+          pos3D.project(camera);
+
+          // Only if in front of camera
+          if (pos3D.z < 1) {
+            const x = (pos3D.x * 0.5 + 0.5) * w;
+            const y = (-(pos3D.y * 0.5) + 0.5) * h;
+            screenCoords.push({
+              id: b.id,
+              code: b.code,
+              name: b.shortName,
+              tag: b.tag,
+              color: b.color,
+              x,
+              y
+            });
+          }
+        });
+        setBuildingScreenPositions(screenCoords);
+      }
+
+      renderer.render(scene, camera);
+    };
+    animate();
+
+    return () => {
+      cancelAnimationFrame(animationFrameRef.current);
+      window.removeEventListener('resize', handleResize);
+      if (renderer.domElement && mountRef.current) {
+        mountRef.current.removeChild(renderer.domElement);
+      }
+      renderer.dispose();
+    };
+  }, []);
+
+  // Update Lighting & Weather
+  useEffect(() => {
+    if (!sceneRef.current) return;
+    const scene = sceneRef.current;
+
+    // Remove existing lights
+    const existingLights = scene.children.filter(c => c.isLight);
+    existingLights.forEach(l => scene.remove(l));
+
+    if (rainParticlesRef.current) {
+      rainParticlesRef.current.visible = timeOfDay === 'rain';
+    }
+
+    if (timeOfDay === 'day') {
+      scene.background = new THREE.Color(0x0f172a);
+      scene.fog = new THREE.FogExp2(0x0f172a, 0.0025);
+
+      const hemi = new THREE.HemisphereLight(0xe0f2fe, 0x1e293b, 0.85);
+      scene.add(hemi);
+
+      const sun = new THREE.DirectionalLight(0xfffbeb, 1.4);
+      sun.position.set(60, 110, 50);
+      sun.castShadow = true;
+      sun.shadow.mapSize.width = 2048;
+      sun.shadow.mapSize.height = 2048;
+      sun.shadow.camera.near = 10;
+      sun.shadow.camera.far = 300;
+      sun.shadow.camera.left = -140;
+      sun.shadow.camera.right = 140;
+      sun.shadow.camera.top = 140;
+      sun.shadow.camera.bottom = -140;
+      scene.add(sun);
+    } else if (timeOfDay === 'sunset') {
+      scene.background = new THREE.Color(0x311025);
+      scene.fog = new THREE.FogExp2(0x311025, 0.0035);
+
+      const hemi = new THREE.HemisphereLight(0xfdba74, 0x4c1d95, 0.9);
+      scene.add(hemi);
+
+      const sun = new THREE.DirectionalLight(0xf97316, 1.8);
+      sun.position.set(-110, 40, -40);
+      sun.castShadow = true;
+      scene.add(sun);
+    } else if (timeOfDay === 'night') {
+      scene.background = new THREE.Color(0x020617);
+      scene.fog = new THREE.FogExp2(0x020617, 0.004);
+
+      const hemi = new THREE.HemisphereLight(0x1e293b, 0x020617, 0.3);
+      scene.add(hemi);
+
+      const moon = new THREE.DirectionalLight(0x38bdf8, 0.5);
+      moon.position.set(-40, 80, -40);
+      scene.add(moon);
+    } else if (timeOfDay === 'rain') {
+      scene.background = new THREE.Color(0x1e293b);
+      scene.fog = new THREE.FogExp2(0x1e293b, 0.006);
+
+      const hemi = new THREE.HemisphereLight(0x64748b, 0x334155, 0.6);
+      scene.add(hemi);
+
+      const greyLight = new THREE.DirectionalLight(0x94a3b8, 0.6);
+      greyLight.position.set(20, 80, 20);
+      scene.add(greyLight);
+    }
+  }, [timeOfDay]);
+
+  // Handle Active Building Floor Explosion Slicing
+  useEffect(() => {
+    buildingGroupsRef.current.forEach((group, id) => {
+      const isThisBuilding = activeBuilding?.id === id;
+      const floorMeshes = group.userData.floorMeshes || [];
+      const roofGroup = group.userData.roofGroup;
+
+      floorMeshes.forEach((floorGroup, idx) => {
+        const baseY = floorGroup.userData.baseY;
+        const targetY = (isThisBuilding && isExploded) ? baseY + idx * 5.5 : baseY;
+        // Smooth floor animation
+        floorGroup.position.y = targetY;
+      });
+
+      if (roofGroup) {
+        const baseRoofY = roofGroup.userData.baseY;
+        roofGroup.position.y = (isThisBuilding && isExploded) ? baseRoofY + (floorMeshes.length * 5.5) : baseRoofY;
+      }
+    });
+  }, [activeBuilding, isExploded]);
+
+  // Handle Building Focus Camera Animation
+  useEffect(() => {
+    if (!activeBuilding || isTouring || isFPMode) return;
+
+    const [bx, by, bz] = activeBuilding.position;
+    const [w, h, d] = activeBuilding.dimensions;
+
+    cameraDesiredTargetRef.current.set(bx, h / 2, bz);
+    cameraDesiredPosRef.current.set(bx + w * 0.8, h + 18, bz + d * 1.5);
+  }, [activeBuilding, isTouring, isFPMode]);
+
+  // Handle Camera Presets
+  useEffect(() => {
+    if (!cameraPreset || isTouring || isFPMode) return;
+    cameraDesiredPosRef.current.set(...cameraPreset.position);
+    cameraDesiredTargetRef.current.set(...cameraPreset.target);
+  }, [cameraPreset, isTouring, isFPMode]);
+
+  // Handle Guided Drone Tour Steps
+  useEffect(() => {
+    if (!isTouring || !tourCurrentStep) return;
+    cameraDesiredPosRef.current.set(...tourCurrentStep.cameraPos);
+    cameraDesiredTargetRef.current.set(...tourCurrentStep.targetPos);
+  }, [isTouring, tourCurrentStep]);
+
+  // Handle Navigation Route Line
+  useEffect(() => {
+    if (!sceneRef.current) return;
+    const scene = sceneRef.current;
+
+    // Remove old route ribbon
+    if (routeMeshRef.current) {
+      scene.remove(routeMeshRef.current);
+      routeMeshRef.current = null;
+    }
+
+    if (activeRoute && activeRoute.points && activeRoute.points.length > 1) {
+      const ribbon = createRouteRibbon(activeRoute.points);
+      if (ribbon) {
+        scene.add(ribbon);
+        routeMeshRef.current = ribbon;
+      }
+    }
+  }, [activeRoute]);
+
+  // Handle Measure Tool Lines
+  useEffect(() => {
+    if (!sceneRef.current) return;
+    const scene = sceneRef.current;
+
+    if (measureLineRef.current) {
+      scene.remove(measureLineRef.current);
+      measureLineRef.current = null;
+    }
+
+    if (measurePoints && measurePoints.length === 2) {
+      const p1 = new THREE.Vector3(...measurePoints[0]);
+      const p2 = new THREE.Vector3(...measurePoints[1]);
+      const lineGeo = new THREE.BufferGeometry().setFromPoints([p1, p2]);
+      const lineMat = new THREE.LineDashedMaterial({
+        color: 0xf59e0b,
+        dashSize: 1,
+        gapSize: 0.5,
+        linewidth: 3
+      });
+      const line = new THREE.Line(lineGeo, lineMat);
+      line.computeLineDistances();
+      scene.add(line);
+      measureLineRef.current = line;
+    }
+  }, [measurePoints]);
+
+  // Handle First-Person Movement
+  useEffect(() => {
+    if (!isFPMode || !fpMoveVector) return;
+    const speed = 0.8;
+    const forward = new THREE.Vector3(Math.sin(fpYawRef.current), 0, -Math.cos(fpYawRef.current)).normalize();
+    const right = new THREE.Vector3(Math.cos(fpYawRef.current), 0, Math.sin(fpYawRef.current)).normalize();
+
+    fpPosRef.current.add(forward.clone().multiplyScalar(fpMoveVector.y * speed));
+    fpPosRef.current.add(right.clone().multiplyScalar(fpMoveVector.x * speed));
+
+    // Clamp inside campus boundaries
+    fpPosRef.current.x = Math.max(-110, Math.min(110, fpPosRef.current.x));
+    fpPosRef.current.z = Math.max(-95, Math.min(95, fpPosRef.current.z));
+    fpPosRef.current.y = 2.5; // Eye height
+  }, [isFPMode, fpMoveVector]);
+
+  // Mouse & Touch Controls (Orbit, Zoom, Pan, Raycasting)
+  const handleMouseDown = (e) => {
+    if (e.button !== 0 && e.button !== 2) return;
+    isDraggingRef.current = true;
+    previousMousePosRef.current = { x: e.clientX, y: e.clientY };
+  };
+
+  const handleMouseMove = (e) => {
+    if (!rendererRef.current || !cameraRef.current || !sceneRef.current) return;
+
+    if (isDraggingRef.current) {
+      const deltaX = e.clientX - previousMousePosRef.current.x;
+      const deltaY = e.clientY - previousMousePosRef.current.y;
+      previousMousePosRef.current = { x: e.clientX, y: e.clientY };
+
+      if (!isFPMode) {
+        // Orbit Controls around desired target
+        const offset = cameraDesiredPosRef.current.clone().sub(cameraDesiredTargetRef.current);
+        const radius = offset.length();
+        let theta = Math.atan2(offset.x, offset.z);
+        let phi = Math.acos(Math.max(-1, Math.min(1, offset.y / radius)));
+
+        theta -= deltaX * 0.006;
+        phi = Math.max(0.1, Math.min(Math.PI / 2 - 0.05, phi + deltaY * 0.006));
+
+        cameraDesiredPosRef.current.x = cameraDesiredTargetRef.current.x + radius * Math.sin(phi) * Math.sin(theta);
+        cameraDesiredPosRef.current.y = cameraDesiredTargetRef.current.y + radius * Math.cos(phi);
+        cameraDesiredPosRef.current.z = cameraDesiredTargetRef.current.z + radius * Math.sin(phi) * Math.cos(theta);
+      } else {
+        // FP Mode Look
+        fpYawRef.current -= deltaX * 0.004;
+        fpPitchRef.current = Math.max(-Math.PI / 3, Math.min(Math.PI / 3, fpPitchRef.current - deltaY * 0.004));
+      }
+    } else if (!isFPMode) {
+      // Raycasting for Hover Highlights
+      const rect = rendererRef.current.domElement.getBoundingClientRect();
+      const mouse = new THREE.Vector2(
+        ((e.clientX - rect.left) / rect.width) * 2 - 1,
+        -((e.clientY - rect.top) / rect.height) * 2 + 1
+      );
+
+      const raycaster = new THREE.Raycaster();
+      raycaster.setFromCamera(mouse, cameraRef.current);
+
+      const buildingMeshes = [];
+      buildingGroupsRef.current.forEach(group => {
+        group.traverse(child => {
+          if (child.isMesh) buildingMeshes.push(child);
+        });
+      });
+
+      const intersects = raycaster.intersectObjects(buildingMeshes, false);
+      if (intersects.length > 0) {
+        let parent = intersects[0].object;
+        while (parent && !parent.userData?.buildingId && parent.parent) {
+          parent = parent.parent;
+        }
+        if (parent && parent.userData?.buildingId) {
+          const bData = BUILDINGS_DATA.find(b => b.id === parent.userData.buildingId);
+          setHoveredBuilding(bData);
+          rendererRef.current.domElement.style.cursor = 'pointer';
+          return;
+        }
+      }
+      setHoveredBuilding(null);
+      rendererRef.current.domElement.style.cursor = 'default';
+    }
+  };
+
+  const handleMouseUp = () => {
+    isDraggingRef.current = false;
+  };
+
+  const handleWheel = (e) => {
+    if (isFPMode) return;
+    e.preventDefault();
+    const zoomFactor = e.deltaY * 0.08;
+    const offset = cameraDesiredPosRef.current.clone().sub(cameraDesiredTargetRef.current);
+    const newDist = Math.max(15, Math.min(220, offset.length() + zoomFactor));
+    offset.setLength(newDist);
+    cameraDesiredPosRef.current.copy(cameraDesiredTargetRef.current.clone().add(offset));
+  };
+
+  const handleClick = (e) => {
+    if (!rendererRef.current || !cameraRef.current || isDraggingRef.current) return;
+
+    const rect = rendererRef.current.domElement.getBoundingClientRect();
+    const mouse = new THREE.Vector2(
+      ((e.clientX - rect.left) / rect.width) * 2 - 1,
+      -((e.clientY - rect.top) / rect.height) * 2 + 1
+    );
+
+    const raycaster = new THREE.Raycaster();
+    raycaster.setFromCamera(mouse, cameraRef.current);
+
+    // If in measure mode
+    if (measureMode) {
+      const plane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
+      const point = new THREE.Vector3();
+      raycaster.ray.intersectPlane(plane, point);
+      if (point) {
+        if (measurePoints.length >= 2) {
+          setMeasurePoints([[point.x, 0.4, point.z]]);
+        } else {
+          setMeasurePoints([...measurePoints, [point.x, 0.4, point.z]]);
+        }
+      }
+      return;
+    }
+
+    // Select Building
+    const buildingMeshes = [];
+    buildingGroupsRef.current.forEach(group => {
+      group.traverse(child => {
+        if (child.isMesh) buildingMeshes.push(child);
+      });
+    });
+
+    const intersects = raycaster.intersectObjects(buildingMeshes, false);
+    if (intersects.length > 0) {
+      let parent = intersects[0].object;
+      while (parent && !parent.userData?.buildingId && parent.parent) {
+        parent = parent.parent;
+      }
+      if (parent && parent.userData?.buildingId) {
+        const bData = BUILDINGS_DATA.find(b => b.id === parent.userData.buildingId);
+        if (bData) {
+          setActiveBuilding(bData);
+        }
+      }
+    }
+  };
+
+  return (
+    <div
+      ref={mountRef}
+      className="relative w-full h-full overflow-hidden select-none"
+      onMouseDown={handleMouseDown}
+      onMouseMove={handleMouseMove}
+      onMouseUp={handleMouseUp}
+      onWheel={handleWheel}
+      onClick={handleClick}
+    >
+      {/* 3D Floating Building Name Badges on Campus */}
+      {onScreenLabels && !isFPMode && !isTouring && buildingScreenPositions.map(pos => {
+        const isSelected = activeBuilding?.id === pos.id;
+        const isHovered = hoveredBuilding?.id === pos.id;
+
+        return (
+          <div
+            key={pos.id}
+            style={{
+              transform: `translate(-50%, -100%) translate3d(${pos.x}px, ${pos.y}px, 0)`,
+              opacity: isSelected ? 1 : isHovered ? 1 : 0.85
+            }}
+            onClick={(e) => {
+              e.stopPropagation();
+              const bData = BUILDINGS_DATA.find(b => b.id === pos.id);
+              if (bData) setActiveBuilding(bData);
+            }}
+            className={`absolute pointer-events-auto cursor-pointer transition-all duration-150 ${
+              isSelected ? 'scale-110 z-30' : isHovered ? 'scale-105 z-20' : 'scale-90 hover:scale-100 z-10'
+            }`}
+          >
+            <div
+              className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold shadow-lg backdrop-blur-md transition-all ${
+                isSelected
+                  ? 'bg-sky-500 text-white border-2 border-white ring-4 ring-sky-500/30'
+                  : 'bg-slate-900/80 text-slate-200 border border-slate-700/80 hover:border-sky-400 hover:text-white'
+              }`}
+            >
+              <span
+                className="w-4 h-4 rounded-full flex items-center justify-center text-[10px] font-bold text-white shrink-0"
+                style={{ backgroundColor: pos.color }}
+              >
+                {pos.code}
+              </span>
+              <span className="whitespace-nowrap">{pos.name}</span>
+            </div>
+          </div>
+        );
+      })}
+
+      {/* Hover Info Tooltip */}
+      {hoveredBuilding && !activeBuilding && !isFPMode && (
+        <div className="absolute bottom-20 left-1/2 -translate-x-1/2 glass-panel px-4 py-2 rounded-xl text-center pointer-events-none z-30 border border-sky-500/30 animate-float">
+          <div className="text-xs text-sky-400 font-bold uppercase tracking-wider">{hoveredBuilding.tag}</div>
+          <div className="text-sm font-semibold text-white">{hoveredBuilding.name}</div>
+          <div className="text-[11px] text-slate-400">Click to explore departments & 3D floors</div>
+        </div>
+      )}
+    </div>
+  );
+}

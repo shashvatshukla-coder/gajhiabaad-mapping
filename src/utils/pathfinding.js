@@ -8,6 +8,14 @@ function getDistance(posA, posB) {
   return Math.sqrt(dx * dx + dz * dz);
 }
 
+// 3D Euclidean distance calculation (including elevation / height)
+export function getDistance3D(posA, posB) {
+  const dx = posA[0] - posB[0];
+  const dy = (posA[1] || 0) - (posB[1] || 0);
+  const dz = posA[2] - posB[2];
+  return Math.sqrt(dx * dx + dy * dy + dz * dz);
+}
+
 // Build adjacency list graph from nodes and edges
 function buildGraph() {
   const adjacency = {};
@@ -159,4 +167,81 @@ function generateTurnDirections(pathNodes) {
   }
 
   return directions;
+}
+
+// Calculate comprehensive Inter-Block Distance comparison
+export function calculateInterBlockDistance(buildingIdA, buildingIdB) {
+  if (!buildingIdA || !buildingIdB) return null;
+  const bA = BUILDINGS_DATA.find(b => b.id === buildingIdA);
+  const bB = BUILDINGS_DATA.find(b => b.id === buildingIdB);
+  if (!bA || !bB) return null;
+
+  if (buildingIdA === buildingIdB) {
+    return {
+      buildingA: bA,
+      buildingB: bB,
+      aerialMeters: 0,
+      aerialFeet: 0,
+      walkMeters: 0,
+      walkFeet: 0,
+      walkMinutes: 0,
+      stepsCount: 0,
+      droneFlightSeconds: 0,
+      posA: bA.position,
+      posB: bB.position,
+      walkRoute: null
+    };
+  }
+
+  // 1. Aerial / Straight line 3D distance
+  const posA3D = [bA.position[0], bA.dimensions[1] / 2, bA.position[2]];
+  const posB3D = [bB.position[0], bB.dimensions[1] / 2, bB.position[2]];
+  const rawAerialUnits = getDistance3D(posA3D, posB3D);
+  const aerialMeters = Math.round(rawAerialUnits * 2.5);
+  const aerialFeet = Math.round(aerialMeters * 3.28084);
+
+  // 2. Walkway Path Distance
+  const walkRoute = findPath(buildingIdA, buildingIdB);
+  const walkMeters = walkRoute ? walkRoute.distanceMeters : Math.round(aerialMeters * 1.25);
+  const walkFeet = Math.round(walkMeters * 3.28084);
+  const walkMinutes = walkRoute ? walkRoute.durationMinutes : Math.max(1, Math.round(walkMeters / 75));
+  const stepsCount = Math.round(walkMeters * 1.3); // ~1.3 steps per meter
+  const droneFlightSeconds = Math.max(1, Math.round(aerialMeters / 15)); // Drone flight ~15 m/s
+
+  return {
+    buildingA: bA,
+    buildingB: bB,
+    aerialMeters,
+    aerialFeet,
+    walkMeters,
+    walkFeet,
+    walkMinutes,
+    stepsCount,
+    droneFlightSeconds,
+    posA: posA3D,
+    posB: posB3D,
+    walkRoute
+  };
+}
+
+// Calculate Proximity Matrix from an origin block to all other campus blocks
+export function getDistanceMatrixFrom(originBuildingId) {
+  if (!originBuildingId) return [];
+  const origin = BUILDINGS_DATA.find(b => b.id === originBuildingId);
+  if (!origin) return [];
+
+  return BUILDINGS_DATA
+    .filter(b => b.id !== originBuildingId)
+    .map(dest => {
+      const calc = calculateInterBlockDistance(originBuildingId, dest.id);
+      return {
+        building: dest,
+        aerialMeters: calc.aerialMeters,
+        aerialFeet: calc.aerialFeet,
+        walkMeters: calc.walkMeters,
+        walkMinutes: calc.walkMinutes,
+        stepsCount: calc.stepsCount
+      };
+    })
+    .sort((a, b) => a.walkMeters - b.walkMeters); // Sort from nearest to furthest
 }

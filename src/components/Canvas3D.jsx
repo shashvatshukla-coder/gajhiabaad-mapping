@@ -25,7 +25,8 @@ export default function Canvas3D({
   setMeasurePoints,
   isFPMode,
   fpMoveVector,
-  onScreenLabels = true
+  onScreenLabels = true,
+  directDistancePair = null // { buildingA, buildingB, aerialMeters, walkMeters }
 }) {
   const mountRef = useRef(null);
   const sceneRef = useRef(null);
@@ -34,6 +35,7 @@ export default function Canvas3D({
   const buildingGroupsRef = useRef(new Map());
   const animationFrameRef = useRef(null);
   const routeMeshRef = useRef(null);
+  const directLaserMeshRef = useRef(null);
   const fountainParticlesRef = useRef(null);
   const rainParticlesRef = useRef(null);
   const measureLineRef = useRef(null);
@@ -50,6 +52,7 @@ export default function Canvas3D({
   const hoveredBuildingRef = useRef(null);
   const [hoveredBuilding, setHoveredBuilding] = useState(null);
   const [buildingScreenPositions, setBuildingScreenPositions] = useState([]);
+  const [midpointScreenPos, setMidpointScreenPos] = useState(null);
 
   // First-Person Mode state
   const fpPosRef = useRef(new THREE.Vector3(0, 2.5, -80));
@@ -232,6 +235,33 @@ export default function Canvas3D({
         setBuildingScreenPositions(screenCoords);
       }
 
+      // Update direct distance midpoint screen coordinates
+      if (directDistancePair && directDistancePair.buildingA && directDistancePair.buildingB && !isFPMode) {
+        const bA = directDistancePair.buildingA;
+        const bB = directDistancePair.buildingB;
+        const mid3D = new THREE.Vector3(
+          (bA.position[0] + bB.position[0]) / 2,
+          ((bA.dimensions[1] + bB.dimensions[1]) / 2) + 4,
+          (bA.position[2] + bB.position[2]) / 2
+        );
+        mid3D.project(camera);
+
+        if (mid3D.z < 1) {
+          const w = mountRef.current?.clientWidth || window.innerWidth;
+          const h = mountRef.current?.clientHeight || window.innerHeight;
+          setMidpointScreenPos({
+            x: (mid3D.x * 0.5 + 0.5) * w,
+            y: (-(mid3D.y * 0.5) + 0.5) * h,
+            aerialMeters: directDistancePair.aerialMeters,
+            walkMeters: directDistancePair.walkMeters
+          });
+        } else {
+          setMidpointScreenPos(null);
+        }
+      } else {
+        setMidpointScreenPos(null);
+      }
+
       renderer.render(scene, camera);
     };
     animate();
@@ -404,6 +434,63 @@ export default function Canvas3D({
       measureLineRef.current = line;
     }
   }, [measurePoints]);
+
+  // Handle Direct Laser Beam for Inter-Block Distance
+  useEffect(() => {
+    if (!sceneRef.current) return;
+    const scene = sceneRef.current;
+
+    if (directLaserMeshRef.current) {
+      scene.remove(directLaserMeshRef.current);
+      directLaserMeshRef.current = null;
+    }
+
+    if (directDistancePair && directDistancePair.buildingA && directDistancePair.buildingB) {
+      const bA = directDistancePair.buildingA;
+      const bB = directDistancePair.buildingB;
+
+      const pA = new THREE.Vector3(bA.position[0], bA.dimensions[1] + 1, bA.position[2]);
+      const pB = new THREE.Vector3(bB.position[0], bB.dimensions[1] + 1, bB.position[2]);
+
+      const laserGroup = new THREE.Group();
+
+      // Direct connecting laser tube
+      const pathCurve = new THREE.LineCurve3(pA, pB);
+      const tubeGeo = new THREE.TubeGeometry(pathCurve, 20, 0.4, 8, false);
+      const tubeMat = new THREE.MeshBasicMaterial({
+        color: 0xf59e0b,
+        transparent: true,
+        opacity: 0.95
+      });
+      const tubeMesh = new THREE.Mesh(tubeGeo, tubeMat);
+      laserGroup.add(tubeMesh);
+
+      // Endpoint glowing beacon spheres
+      const beaconGeo = new THREE.SphereGeometry(1.2, 16, 16);
+      const beaconMatA = new THREE.MeshBasicMaterial({ color: 0x38bdf8 });
+      const beaconMatB = new THREE.MeshBasicMaterial({ color: 0xf43f5e });
+
+      const beaconA = new THREE.Mesh(beaconGeo, beaconMatA);
+      beaconA.position.copy(pA);
+      laserGroup.add(beaconA);
+
+      const beaconB = new THREE.Mesh(beaconGeo, beaconMatB);
+      beaconB.position.copy(pB);
+      laserGroup.add(beaconB);
+
+      scene.add(laserGroup);
+      directLaserMeshRef.current = laserGroup;
+
+      // Adjust camera to frame both blocks
+      if (!isTouring && !isFPMode) {
+        const midX = (pA.x + pB.x) / 2;
+        const midZ = (pA.z + pB.z) / 2;
+        const dist = pA.distanceTo(pB);
+        cameraDesiredTargetRef.current.set(midX, 6, midZ);
+        cameraDesiredPosRef.current.set(midX, Math.max(50, dist * 0.9 + 30), midZ + Math.max(45, dist * 0.8 + 25));
+      }
+    }
+  }, [directDistancePair, isTouring, isFPMode]);
 
   // Handle First-Person Movement
   useEffect(() => {
@@ -610,6 +697,28 @@ export default function Canvas3D({
           <div className="text-xs text-sky-400 font-bold uppercase tracking-wider">{hoveredBuilding.tag}</div>
           <div className="text-sm font-semibold text-white">{hoveredBuilding.name}</div>
           <div className="text-[11px] text-slate-400">Click to explore departments & 3D floors</div>
+        </div>
+      )}
+
+      {/* Floating 3D Midpoint Distance Badge for Inter-Block Measurement */}
+      {midpointScreenPos && !isFPMode && (
+        <div
+          style={{
+            transform: `translate(-50%, -50%) translate3d(${midpointScreenPos.x}px, ${midpointScreenPos.y}px, 0)`
+          }}
+          className="absolute pointer-events-none z-30 animate-bounce-slow"
+        >
+          <div className="glass-panel px-3.5 py-2 rounded-2xl shadow-2xl border-2 border-amber-400/80 bg-slate-950/90 text-center ring-4 ring-amber-500/20">
+            <div className="text-[10px] font-black uppercase tracking-wider text-amber-400 flex items-center justify-center gap-1">
+              <span>Direct Laser Distance</span>
+            </div>
+            <div className="text-base font-black text-white leading-tight">
+              {midpointScreenPos.aerialMeters} <span className="text-xs text-amber-300 font-bold">m</span>
+            </div>
+            <div className="text-[10px] text-slate-300 font-semibold mt-0.5">
+              Walkway: <span className="text-sky-300 font-bold">{midpointScreenPos.walkMeters}m</span>
+            </div>
+          </div>
         </div>
       )}
     </div>

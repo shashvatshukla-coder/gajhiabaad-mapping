@@ -77,7 +77,16 @@ An interactive 3D Web application for **KIET Group of Institutions (KIET Deemed 
 
 ---
 
-### 8. 🗺️ Real-Time 2D Radar Mini-Map
+### 8. 📐 Inter-Block Distance Calculator & Proximity Matrix
+- Calculate exact metric distances between **any two blocks** on campus:
+  - **Campus Walkway Distance**: Exact path distance in meters, feet, estimated walking time, and step count.
+  - **Direct Line of Sight / Aerial Distance**: 3D Euclidean distance in meters, feet, and drone flight duration.
+  - **3D Direct Laser Visualization**: Renders a high-intensity glowing laser beam between block rooftops with an on-screen floating midpoint metric badge.
+  - **All-Campus Proximity Matrix**: Displays a ranked list of distances from any selected block to all other campus buildings sorted from closest to furthest.
+
+---
+
+### 9. 🗺️ Real-Time 2D Radar Mini-Map
 - Top-down live mini-map with real-time campus footprint, route tracking, and instant click-to-focus.
 
 ---

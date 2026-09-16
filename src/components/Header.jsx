@@ -18,7 +18,8 @@ import {
   X,
   ChevronRight,
   Eye,
-  EyeOff
+  EyeOff,
+  ArrowRightLeft
 } from 'lucide-react';
 import { CAMPUS_CATEGORIES, BUILDINGS_DATA, CAMPUS_STATS } from '../data/campusData';
 import { soundEngine } from '../utils/audioEffects';
@@ -38,7 +39,8 @@ export default function Header({
   onOpenEvents,
   onOpenAbout,
   onScreenLabels,
-  setOnScreenLabels
+  setOnScreenLabels,
+  onOpenBlockDistance
 }) {
   const [searchQuery, setSearchQuery] = useState('');
   const [isSearchOpen, setIsSearchOpen] = useState(false);
@@ -181,6 +183,19 @@ export default function Header({
 
         {/* Right: Quick Action Controls */}
         <div className="flex items-center gap-2 pointer-events-auto">
+          {/* Block Distance Calculator Trigger */}
+          <button
+            onClick={() => {
+              soundEngine.playClick();
+              onOpenBlockDistance();
+            }}
+            title="Calculate Distance Between Any Two Blocks"
+            className="glass-button px-3 py-2 rounded-2xl text-xs font-bold text-amber-300 flex items-center gap-1.5 shadow-lg border border-amber-500/30 hover:border-amber-400 bg-amber-500/10"
+          >
+            <ArrowRightLeft className="w-4 h-4 text-amber-400" />
+            <span className="hidden md:inline">Block Distance</span>
+          </button>
+
           {/* Navigation Route Trigger */}
           <button
             onClick={() => {

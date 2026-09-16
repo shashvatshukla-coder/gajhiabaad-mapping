@@ -8,7 +8,8 @@ import {
   GraduationCap,
   Sparkles,
   ChevronRight,
-  SplitSquareVertical
+  SplitSquareVertical,
+  ArrowRightLeft
 } from 'lucide-react';
 import { soundEngine } from '../utils/audioEffects';
 
@@ -17,7 +18,8 @@ export default function BuildingModal({
   onClose,
   isExploded,
   setIsExploded,
-  onNavigateTo
+  onNavigateTo,
+  onOpenBlockDistance
 }) {
   const [selectedFloorIndex, setSelectedFloorIndex] = useState(0);
 
@@ -62,26 +64,39 @@ export default function BuildingModal({
         </button>
       </div>
 
-      {/* Action Buttons: 3D Explode Floors & Navigate */}
-      <div className="grid grid-cols-2 gap-2 my-3">
+      {/* Action Buttons: 3D Explode Floors, Directions & Block Distance */}
+      <div className="grid grid-cols-3 gap-1.5 my-3">
         <button
           onClick={handleToggleExplode}
-          className={`flex items-center justify-center gap-1.5 py-2.5 px-3 rounded-xl text-xs font-bold transition-all shadow-md ${
+          className={`flex items-center justify-center gap-1 py-2 px-2 rounded-xl text-[11px] font-bold transition-all shadow-md ${
             isExploded
               ? 'bg-amber-500 text-slate-950 font-extrabold shadow-amber-500/20 border border-amber-400'
               : 'glass-button text-amber-300 border-amber-500/30 hover:border-amber-400'
           }`}
         >
-          <SplitSquareVertical className="w-4 h-4" />
-          <span>{isExploded ? 'Collapse 3D' : 'Explode 3D'}</span>
+          <SplitSquareVertical className="w-3.5 h-3.5" />
+          <span>{isExploded ? 'Collapse' : 'Explode'}</span>
         </button>
 
         <button
           onClick={handleNavigate}
-          className="flex items-center justify-center gap-1.5 py-2.5 px-3 rounded-xl text-xs font-bold bg-sky-500 hover:bg-sky-400 text-white transition-all shadow-md shadow-sky-500/25 border border-sky-400"
+          className="flex items-center justify-center gap-1 py-2 px-2 rounded-xl text-[11px] font-bold bg-sky-500 hover:bg-sky-400 text-white transition-all shadow-md shadow-sky-500/25 border border-sky-400"
         >
-          <Navigation className="w-4 h-4" />
+          <Navigation className="w-3.5 h-3.5" />
           <span>Directions</span>
+        </button>
+
+        <button
+          onClick={() => {
+            soundEngine.playClick();
+            if (onOpenBlockDistance) {
+              onOpenBlockDistance(building.id);
+            }
+          }}
+          className="flex items-center justify-center gap-1 py-2 px-2 rounded-xl text-[11px] font-bold glass-button text-amber-300 border-amber-500/30 hover:border-amber-400 hover:bg-amber-500/20"
+        >
+          <ArrowRightLeft className="w-3.5 h-3.5" />
+          <span>Distance</span>
         </button>
       </div>
 

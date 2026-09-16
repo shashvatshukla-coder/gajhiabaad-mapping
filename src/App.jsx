@@ -10,9 +10,10 @@ import MeasureToolHUD from './components/MeasureToolHUD';
 import FPControlsHUD from './components/FPControlsHUD';
 import EventsModal from './components/EventsModal';
 import AboutModal from './components/AboutModal';
+import BlockDistanceModal from './components/BlockDistanceModal';
 import { BUILDINGS_DATA, CAMERA_PRESETS } from './data/campusData';
 import { TOUR_STEPS } from './data/tourSteps';
-import { findPath } from './utils/pathfinding';
+import { findPath, calculateInterBlockDistance } from './utils/pathfinding';
 import { soundEngine } from './utils/audioEffects';
 
 export default function App() {
@@ -38,9 +39,15 @@ export default function App() {
   const [endBuildingId, setEndBuildingId] = useState(null);
   const [activeRoute, setActiveRoute] = useState(null);
 
-  // Distance Measurement State
+  // Distance Measurement State (Point-to-Point)
   const [isMeasureActive, setIsMeasureActive] = useState(false);
   const [measurePoints, setMeasurePoints] = useState([]);
+
+  // Inter-Block Distance Calculator State
+  const [isBlockDistOpen, setIsBlockDistOpen] = useState(false);
+  const [blockDistA, setBlockDistA] = useState('block-a');
+  const [blockDistB, setBlockDistB] = useState('block-e');
+  const [directDistancePair, setDirectDistancePair] = useState(null);
 
   // First-Person Mode State
   const [isFPMode, setIsFPMode] = useState(false);
@@ -87,6 +94,38 @@ export default function App() {
     setIsExploded(false);
   };
 
+  // Open Block Distance Calculator modal
+  const handleOpenBlockDistance = (originId = null) => {
+    if (originId) {
+      setBlockDistA(originId);
+      if (blockDistB === originId) {
+        const other = BUILDINGS_DATA.find(b => b.id !== originId);
+        setBlockDistB(other ? other.id : 'block-b');
+      }
+    }
+    setIsBlockDistOpen(true);
+    setActiveBuilding(null);
+    setIsExploded(false);
+  };
+
+  // Focus two blocks in 3D with direct laser beam
+  const handleFocusBlocksIn3D = (buildingA, buildingB) => {
+    const calc = calculateInterBlockDistance(buildingA.id, buildingB.id);
+    if (calc) {
+      setDirectDistancePair(calc);
+      if (calc.walkRoute) {
+        setActiveRoute(calc.walkRoute);
+      }
+    }
+  };
+
+  // Navigate Route from Block Distance modal
+  const handleNavigateRouteFromDistance = (fromId, toId) => {
+    setStartBuildingId(fromId);
+    setEndBuildingId(toId);
+    setIsNavOpen(true);
+  };
+
   // Start Drone Tour
   const handleStartTour = () => {
     setIsTouring(true);
@@ -97,6 +136,7 @@ export default function App() {
     setIsNavOpen(false);
     setIsFPMode(false);
     setIsMeasureActive(false);
+    setDirectDistancePair(null);
   };
 
   // Exit Drone Tour
@@ -123,6 +163,7 @@ export default function App() {
       setIsNavOpen(false);
       setIsTouring(false);
       setActiveBuilding(null);
+      setDirectDistancePair(null);
     }
   };
 
@@ -140,6 +181,7 @@ export default function App() {
     setIsExploded(false);
     setIsTouring(false);
     setIsFPMode(false);
+    setDirectDistancePair(null);
   };
 
   return (
@@ -160,6 +202,7 @@ export default function App() {
         isFPMode={isFPMode}
         fpMoveVector={fpMoveVector}
         onScreenLabels={onScreenLabels}
+        directDistancePair={directDistancePair}
       />
 
       {/* Header Navigation Bar */}
@@ -180,6 +223,7 @@ export default function App() {
           onOpenAbout={() => setIsAboutOpen(true)}
           onScreenLabels={onScreenLabels}
           setOnScreenLabels={setOnScreenLabels}
+          onOpenBlockDistance={() => handleOpenBlockDistance()}
         />
       )}
 
@@ -191,6 +235,7 @@ export default function App() {
           isExploded={isExploded}
           setIsExploded={setIsExploded}
           onNavigateTo={handleNavigateToBuilding}
+          onOpenBlockDistance={handleOpenBlockDistance}
         />
       )}
 
@@ -218,7 +263,7 @@ export default function App() {
         />
       )}
 
-      {/* Distance Measurement Tool HUD */}
+      {/* Point-to-Point Measurement Tool HUD */}
       {isMeasureActive && (
         <MeasureToolHUD
           measurePoints={measurePoints}
@@ -251,6 +296,18 @@ export default function App() {
           activeRoute={activeRoute}
         />
       )}
+
+      {/* Inter-Block Distance Calculator Modal */}
+      <BlockDistanceModal
+        isOpen={isBlockDistOpen}
+        onClose={() => setIsBlockDistOpen(false)}
+        blockAId={blockDistA}
+        setBlockAId={setBlockDistA}
+        blockBId={blockDistB}
+        setBlockBId={setBlockDistB}
+        onFocusBlocksIn3D={handleFocusBlocksIn3D}
+        onNavigateRoute={handleNavigateRouteFromDistance}
+      />
 
       {/* Campus Events & Fests Modal */}
       <EventsModal
